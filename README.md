@@ -367,7 +367,7 @@ python run.py
 --debug
 ```
 
-- 评测结果格式如下，结果见表
+- 评测结果格式如下
 
 ```bash
 dataset                                         version    metric         mode      opencompass.models.huggingface.HuggingFace_RecipeAssistant_merged
@@ -376,3 +376,4 @@ ceval-computer_network                          db9ce2     accuracy       gen   
 ceval-operating_system                          1c2571     accuracy       gen                                                                   36.84                                                             30.11
 ```
 
+结果文件可在同目录文件[results](./results)中获取
