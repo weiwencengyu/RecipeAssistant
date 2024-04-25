@@ -273,216 +273,49 @@ streamlit run web_demo.py --server.address 127.0.0.1 --server.port 6006
   需要配置本地端口进行访问
   
 
-## OpenXLab 部署 中医药知识问答助手
+## 部署 
 
-&emsp;&emsp;仅需要 Fork [此仓库](https://github.com/xiaomile/medKnowledgeAssitant)，然后在 OpenXLab 上创建一个新的项目，将 Fork 的仓库与新建的项目关联，即可在 OpenXLab 上部署 中医药知识问答助手。
+### 模型转换
 
-&emsp;&emsp;***OPenXLab 中医药知识问答助手  https://openxlab.org.cn/apps/detail/xiaomile/medKnowledgeAssitant***
-&emsp;&emsp;***OPenXLab 中医药知识问答助手（4bit）  https://openxlab.org.cn/apps/detail/xiaomile/personal_assistant2_4bit***
+转换模型为`turbomind`格式。使用 TurboMind 推理模型需要先将模型转化为 TurboMind 的格式，目前支持在线转换和离线转换两种形式。TurboMind 是一款关于 LLM 推理的高效推理引擎，基于英伟达的 FasterTransformer 研发而成。它的主要功能包括：LLaMa 结构模型的支持，persistent batch 推理模式和可扩展的 KV 缓存管理器。
+本项目采用离线转换，需要在启动服务之前，将模型转为 lmdeploy TurboMind 的格式
 
-![Alt text](images/openxlab.png)
-![4bit](images/openxlab2.png)
+- 离线转换
 
-## LmDeploy部署
-
-- 首先安装LmDeploy
-
-```shell
-pip install -U 'lmdeploy[all]==v0.2.0'
+```bash
+lmdeploy convert internlm-chat-7b  ~/RecipeAssistant/merged
 ```
 
-- 然后转换模型为`turbomind`格式。使用 TurboMind 推理模型需要先将模型转化为 TurboMind 的格式，，目前支持在线转换和离线转换两种形式。TurboMind 是一款关于 LLM 推理的高效推理引擎，基于英伟达的 FasterTransformer 研发而成。它的主要功能包括：LLaMa 结构模型的支持，persistent batch 推理模式和可扩展的 KV 缓存管理器。
-本项目采用离线转换，需要在启动服务之前，将模型转为 lmdeploy TurboMind 的格式，如下所示。
+转换成功，并在RecipeAssistant文件夹下生成workplace文件夹
 
-> --dst-path: 可以指定转换后的模型存储位置。
+### TurboMind推理+API服务
 
-```shell
-lmdeploy convert internlm-chat-7b  要转化的模型地址 --dst-path ./workspace 转换后模型的存放地址
-```
-执行完成后将会在当前目录生成一个 workspace 的文件夹。
-
-- LmDeploy Chat对话。模型转换完成后，我们就具备了使用模型推理的条件，接下来就可以进行真正的模型推理环节。
-1、本地对话（Bash Local Chat）模式，它是跳过API Server直接调用TurboMind。简单来说，就是命令行代码直接执行 TurboMind。
-```shell
-lmdeploy chat turbomind ./workspace #转换后的turbomind模型地址
+```bash
+lmdeploy serve api_server ./workspace \
+        --server_name 0.0.0.0 \
+        --server_port 23333 \
+        --instance_num 64 \
+        --tp 1
 ```
 
-- 网页Demo演示。本项目采用将TurboMind推理作为后端，将Gradio作为前端Demo演示。
-```shell
-# Gradio+Turbomind(local)
-lmdeploy serve gradio ./workspace #转换后的turbomind模型地址
-```
-就可以直接启动 Gradio，此时没有API Server，TurboMind直接与Gradio通信。
-- 原始模型运行，显存占用56%
+### 网页Demo演示
 
-## Lmdeploy&opencompass 量化以及量化评测  
-> 进行量化决策流程
-> Step1:尝试正常版本，评估效果。效果一般，启动量化。
-> Step2:开展KV Cache量化，以减少中间过程计算结果对显存的占用。评估量化效果。
-### `KV Cache`量化 
-- 计算与获得量化参数
-  >计算 minmax。主要思路是通过计算给定输入样本在每一层不同位置处计算结果的统计情况。
-  >在计算minmax的命令行中，会选择128条输入样本，每条样本长度为 2048，数据集选择ptb，输入模型后就会得到上面的各种统计值。
-```shell
-# 计算 minmax
-lmdeploy lite calibrate \
-  ./internlm-chat-7b/  #模型绝对路径 \
-  --calib-dataset 'ptb' \
-  --calib-samples 128 \
-  --calib-seqlen 2048 \
-  --work-dir ./quant_output #参数保存路径
-  --trust_remote_code=True
+- 分窗口输入命令
+
+```bash
+lmdeploy serve gradio http://0.0.0.0:23333 \
+        --server_name 0.0.0.0 \
+        --server_port 6006 \
+        --restful_api True
 ```
-  >通过minmax获取量化参数。主要利用下面公式来获取每一层的KV中心值（zp）和缩放值（scale）。
-```shell
-zp = (min+max) / 2
-scale = (max-min) / 255
-quant: q = round( (f-zp) / scale)
-dequant: f = q * scale + zp
-```
-  >有了这两个值就可以进行量化和反量化操作。具体来说就是对历史存储中的K和V做量化，使用时再反量化。使用如下命令：
-```shell
-# 通过 minmax 获取量化参数
-lmdeploy lite kv_qparams \
-   ./quant_output #保存kv计算结果的路径 \
-   workspace/triton_models/weights/ #转换后模型的存放路径 \
-  --num_tp 1
-```
-- 修改配置。修改weights/config.ini文件，把quant_policy改为4，从而打开KV int8开关。
-```shell
-tensor_para_size = 1
-session_len = 2056
-max_batch_size = 64
-max_context_token_num = 1
-step_length = 1
-cache_max_entry_count = 0.5
-cache_block_seq_len = 128
-cache_chunk_size = 1
-use_context_fmha = 1
-quant_policy = 4
-max_position_embeddings = 2048
-rope_scaling_factor = 0.0
-use_logn_attn = 0
-```
-  >至此就完成了KV Cache量化。
-  >开始对话
-```shell
-lmdeploy chat turbomind /root/chinesemedical/workspace --model-format hf  --quant-policy 4
+ 
+- 配置本地端口
+
+```bash
+ssh -CNg -L 6006:127.0.0.1:6006 root@ssh.intern-ai.org.cn -p 38793
 ```
 
-- 评估量化效果。编写评测文件`configs/eval_turbomind.py`
-```python
-from mmengine.config import read_base
-from opencompass.models.turbomind import TurboMindModel
-
-with read_base():
- # choose a list of datasets   
-  from .datasets.ceval.ceval_gen import ceval_datasets 
- # and output the results in a choosen format
-  from .summarizers.medium import summarizer
-
-datasets = [*ceval_datasets]
-
-internlm2_chat_7b = dict(
-     type=TurboMindModel,
-     abbr='internlm2-chat-7b-turbomind',
-     path='转换后的模型地址',
-     engine_config=dict(session_len=512,
-         max_batch_size=2,
-         rope_scaling_factor=1.0),
-     gen_config=dict(top_k=1,
-         top_p=0.8,
-         temperature=1.0,
-         max_new_tokens=100),
-     max_out_len=100,
-     max_seq_len=512,
-     batch_size=2,
-     concurrency=1,
-     #  meta_template=internlm_meta_template,
-     run_cfg=dict(num_gpus=1, num_procs=1),
-)
-models = [internlm2_chat_7b]
-```
-- 启动评测！
-```shell
-python run.py configs/eval_turbomind.py -w 指定结果保存路径
-```
-- 单独做KV Cache量化，显存占用55%，无明显优化！
-  
-> Step3:开展W4A16量化，以减少模型参数计算结果对显存的占用。评估量化效果。W4A16中的A是指Activation，保持FP16，只对部分权重参数进行4bit量化
-### `W4A16`量化 
-- 计算与获得量化参数
-  >计算 minmax。主要思路是通过计算给定输入样本在每一层不同位置处计算结果的统计情况。
-  >在计算minmax的命令行中，会选择128条输入样本，每条样本长度为 2048，数据集选择ptb，输入模型后就会得到上面的各种统计值。
-```shell
-# 计算 minmax
-lmdeploy lite calibrate \
-  ./internlm-chat-7b/  #模型绝对路径 \
-  --calib-dataset 'ptb' \
-  --calib-samples 128 \
-  --calib-seqlen 2048 \
-  --work-dir ./quant_output #参数保存路径
-  --trust_remote_code=True
-```
-- 量化权重模型
-  >利用上面得到的统计值对参数进行量化。
-  >执行如下命令：
-```shell
-# 量化权重模型
-lmdeploy lite auto_awq \
-  ./internlm-chat-7b/   #未量化前模型的存放路径 \
-  --calib-dataset 'ptb' \
-  --calib-samples 128 \ 
-  --calib-seqlen 2048 \
-  --w-bits 4 \
-  --w_group_size 128 \
-  --work_dir ./internlm-chat-7b-4bit #量化后模型的存放路径
-```
-  >命令中 w_bits表示量化的位数，w_group_size表示量化分组统计的尺寸，work_dir是量化后模型输出的位置。
-  >因为没有 torch.int4，所以实际存储时，8个4bit权重会被打包到一个int32值中。
-- 转换成 TurboMind 格式（也可以跳过这一步，直接启动对话）
-```shell
-# 转换模型的layout，存放在默认路径 ./workspace 下
-lmdeploy convert  internlm-chat-7b ./internlm-chat-7b-4bit/ #W4A16量化后的模型路径\
-    --model-format awq \
-    --group-size 128
-    --dst_path ./workspace_4bit #转换后模型的存放路径
-``` 
-  >这个group-size就是那个w_group_size。可以指定输出目录：--dst_path。
-  >至此就完成了W4A16量化。
-- 启动对话
-```shell
-lmdeploy chat turbomind ./workspace_4bit --model-format awq
-``` 
-- 评估量化效果。评测文件`configs/eval_turbomind.py`如上
-- 启动评测！
-```shell
-python run.py configs/eval_turbomind.py -w 结果保存路径
-```
-结果文件可在同目录文件[results](./results)中获取
-- 单独做W4A16量化，显存占用64%，较未量化前模型占用内存更大！
-
-
-> Step4:同步开启KV Cache量化和W4A16量化，以减少中间过程计算结果和模型参数计算结果对显存的占用。
-- 获取对W4A16量化后模型的KV Cache量化参数
-```shell
-lmdeploy lite kv_qparams \
-   ./quant_output/  \  # 存放之前kv cache计算结果的文件夹路径
-  workspace_4bit/triton_models/weights/ \ # 存放本次kv cache量化后参数的文件夹路径
-  --num-tp 1
-```
-- 修改参数
-对workspace_4bit/triton_models/weights/config.ini文件进行参数修改
-```shell
-cache_max_entry_count = 0.2
-quant_policy = 4
-```
-- 启动对话
-```shell
-lmdeploy chat turbomind ./workspace_4bit/  --model-format awq --quant-policy 4
-```
-- 同步开启KV Cache量化和W4A16量化，显存占用34%，有明显优化效果！
-
+- 打开localhost:6006,在页面中就能与模型进行对话
 
 ## OpenCompass 评测
 
@@ -494,99 +327,37 @@ cd opencompass
 pip install -e .
 ```
 
-- 在opencompass/configs目录下新建自定义数据集测评配置文件 `eval_internlm_7b_custom.py` 和 `eval_internlm_chat_turbomind_api_custom.py`
-
-```python
-from mmengine.config import read_base
-from opencompass.models import HuggingFaceCausalLM
-
-with read_base():
-    from .summarizers.medium import summarizer
-
-datasets = [
-    {"path": "/root/ChineseMedicalAssistant/test_qa.jsonl", "data_type": "qa", "infer_method": "gen"}, # your custom dataset
-]
-
-internlm_chat_7b = dict(
-       type=HuggingFaceCausalLM,
-       # `HuggingFaceCausalLM` 的初始化参数
-       path='/root/ChineseMedicalAssistant/merged', # your model path
-       tokenizer_path='/root/ChineseMedicalAssistant/merged', # your model path
-       tokenizer_kwargs=dict(
-           padding_side='left',
-           truncation_side='left',
-           proxies=None,
-           trust_remote_code=True),
-       model_kwargs=dict(device_map='auto',trust_remote_code=True),
-       # 下面是所有模型的共同参数，不特定于 HuggingFaceCausalLM
-       abbr='internlm_chat_7b',               # 结果显示的模型缩写
-       max_seq_len=2048,             # 整个序列的最大长度
-       max_out_len=100,              # 生成的最大 token 数
-       batch_size=64,                # 批量大小
-       run_cfg=dict(num_gpus=1),     # 该模型所需的 GPU 数量
-    )
-
-models=[internlm_chat_7b]
-```
-
-```python
-from mmengine.config import read_base
-from opencompass.models.turbomind_api import TurboMindAPIModel
-
-with read_base():
-    from .summarizers.medium import summarizer
-
-datasets = [
-    {"path": "/root/ChineseMedicalAssistant/test_qa.jsonl", "data_type": "qa", "infer_method": "gen"}, # your custom dataset
-]
-
-
-meta_template = dict(
-    round=[
-        dict(role='HUMAN', begin='<|User|>:', end='\n'),
-        dict(role='BOT', begin='<|Bot|>:', end='<eoa>\n', generate=True),
-    ],
-    eos_token_id=103028)
-
-models = [
-    dict(
-        type=TurboMindAPIModel,
-        abbr='internlm-chat-7b-turbomind',
-        path="./model/workspace_4bit",
-        api_addr='http://0.0.0.0:23333',
-        max_out_len=100,
-        max_seq_len=2048,
-        batch_size=8,
-        meta_template=meta_template,
-        run_cfg=dict(num_gpus=1, num_procs=1),
-    )
-]
-```
-
-- 评测启动！
+- 下载解压数据集
 
 ```shell
-python run.py configs/eval_internlm_7b_custom.py
+cp /share/temp/datasets/OpenCompassData-core-20231110.zip /root/RecipeAssistant/opencompass/
+unzip OpenCompassData-core-20231110.zip
+#将会在RecipeAssistant/opencompass下看到data文件夹
 ```
 
-- 量化评测，先启动turbomind作为服务端
+- 启动评测
 
-```shell
-lmdeploy serve api_server ./workspace_4bit --server_name 0.0.0.0 --server_port 23333 --instance_num 64 --tp 1
+```bash
+export MKL_SERVICE_FORCE_INTEL=1
+python run.py 
+--datasets ceval_gen 
+--hf-path /root/RecipeAssistant/merged/ 
+--tokenizer-path /root/RecipeAssistant/merged/ 
+--tokenizer-kwargs padding_side='left' truncation='left' trust_remote_code=True 
+--model-kwargs trust_remote_code=True device_map='auto' 
+--max-seq-len 1024 
+--max-out-len 16 
+--batch-size 2  
+--num-gpus 1  
+--debug
 ```
 
-```shell
-python run.py eval_internlm_chat_turbomind_api_custom.py
+- 评测结果格式如下，结果见表
+
+```bash
+dataset                                         version    metric         mode      opencompass.models.huggingface.HuggingFace_RecipeAssistant_merged
+----------------------------------------------  ---------  -------------  ------  -------------------------------------------------------------------
+ceval-computer_network                          db9ce2     accuracy       gen                                                                   21.05
+ceval-operating_system                          1c2571     accuracy       gen                                                                   36.84                                                             30.11
 ```
 
-
-## 致谢
-
-<div align="center">
-
-***感谢上海人工智能实验室组织的 书生·浦语实战营 学习活动~***
-
-***感谢 OpenXLab 对项目部署的算力支持~***
-
-***感谢 浦语小助手 对项目的支持~***
-</div>
