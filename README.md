@@ -8,16 +8,12 @@
   - [模型](#模型)
   - [数据集](#数据集)
   - [微调](#微调)
-    - [快速开始](#快速开始)
-    - [重新训练](#重新训练)
-      - [环境搭建](#环境搭建)
-      - [Transformers微调](#transformers微调)
-      - [XTuner微调](#xtuner微调)
-    - [部署](#部署)
-      - [OpenXLab 部署 Chat-嬛嬛](#openxlab-部署-chat-嬛嬛)
-      - [LmDeploy部署](#lmdeploy部署)
-    - [测评与量化](#测评与量化)
-      - [OpneCompass 评测](#opnecompass-评测)
+     - [XTuner](#xtuner)
+  - [部署](#部署)
+     - [模型转换](#模型转换)
+     - [TurboMind推理+API服务](#TurboMind推理+API服务)
+     - [网页demo演示](#网页demo演示)
+  - [OpenCompass评测](#OpenCompass评测)
 
 ## 介绍
 
@@ -336,7 +332,7 @@ ssh -CNg -L 6006:127.0.0.1:6006 root@ssh.intern-ai.org.cn -p 38793
 
 - 打开localhost:6006,在页面中就能与模型进行对话
 
-## OpenCompass 评测
+## OpenCompass评测
 
 - 安装 OpenCompass
 
