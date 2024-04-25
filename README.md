@@ -29,6 +29,8 @@
 
 &emsp;&emsp;数据集地址：https://opendatalab.com/OpenDataLab/XiaChuFang_Recipe_Corpus
 
+&emsp;&emsp;由于处理后的数据集依旧过大，无法放入github中，我们附上处理过的使用的数据集放置地址：https://jrcd8xtxn1.feishu.cn/wiki/TCeRwPZaAiPW6PkWIYJcbftwnqG?from=from_copylink
+
 &emsp;&emsp;数据集样例：
 
 ```text
