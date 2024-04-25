@@ -21,7 +21,7 @@
 
 ## 模型
 
-&emsp;&emsp;菜谱小管家使用的是InternLM 的 7B 模型，模型参数量为 7B
+&emsp;&emsp;菜谱小管家使用的是InternLM 的 7B 模型，模型参数量为 7B,底座模型为 interlm-chat-7b
 
 ## 数据集
 
