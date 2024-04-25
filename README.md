@@ -2,7 +2,7 @@
 
 ## 介绍
 
-使用食谱相关的数据集对InternLM大模型进行微调，让其实现问它一道菜的做法，它可以清晰地告诉大家怎么做。
+&emsp;&emsp;使用食谱相关的数据集对InternLM大模型进行微调，让其实现问它一道菜的做法，它可以清晰地告诉大家怎么做。
 
 ## OpenXlab 模型
 
@@ -39,10 +39,77 @@
 > 目标格式：
 >
 > ```test
-> 
+> [{
+>    "conversation":[
+>       {
+>          "system": "xxx",
+>          "input": "xxx",
+>          "output": "xxx"
+>       }
+>    ]
+> }]
 > ```
+>
+> 通过python脚本进行转换，python代码如下：
+>
+> ```python
+>import json
+>
+>input_file = 'recipe_corpus_full.json'
+>output_prefix = 'tran_'
+>records_per_file = 100000
+>
+>start_index = 0
+>
+>
+>with open(input_file, 'r', encoding='utf-8') as file:
+>    lines = file.readlines()
+>
 > 
-
+>    row_num = 0
+>    conversations = []
+>
+>
+>with open(input_file, 'r', encoding='utf-8') as file:
+>    lines = file.readlines()
+>
+>    row_num = 0
+>    conversations = []
+>
+>    for line in lines:
+>        data = json.loads(line) 
+>        keywords = data['keywords'] 
+>        recipeIngredient = data['recipeIngredient']  
+>        recipeInstructions = data['recipeInstructions'] 
+>        author = data['author']  
+>        system_message = f"你是一个经验丰富的专业厨师，用户提出自己想要做的菜肴时，你可以精>确地回答出做菜的原料和做菜的方法" 
+>        input_message = keywords[0]  
+>
+>        
+>        formatted_ingredients = "\n".join(recipeIngredient)
+>        formatted_instructions = "\n".join(recipeInstructions)
+>
+>        output_message = f"您需要准备以下食材:\n{formatted_ingredients}\n按以下方法制作:\n{formatted_instructions}" 
+>        new_record = {
+>            "conversation": [
+>                {
+>                    "system": system_message,
+>                    "input": input_message,
+>                    "output": output_message
+>                }
+>            ]
+>        }
+>        conversations.append(new_record)  
+>        row_num += 1  
+>        if row_num % records_per_file == 0:  
+>            with open(f'{output_prefix}{start_index}.json', 'w', encoding='utf-8') as >file:
+>                json.dump(conversations, file, ensure_ascii=False,
+>                          indent=4)  
+>            start_index += 1 
+>            conversations = []  
+> ```
+>
+> 此处生成10个.json文件，本项目中随机抽取一个.json文件作为微调的训练集
 </details>
 
 ## 微调
@@ -51,74 +118,160 @@
 
 ### XTuner
 
-&emsp;&emsp;使用 XTuner 进行微调，具体脚本可参考`configs`文件夹下的脚本，脚本内有较为详细的注释。
+&emsp;&emsp;使用 XTuner 进行微调，具体操作如下：
 
-|基座模型|配置文件|
-|:---:|:---:|
-|internlm-chat-7b|[internlm_chat_7b_qlora_e3_chineseMed.py](configs/internlm_chat_7b_qlora_e3_chineseMed.py)|
-|internlm2-chat-7b|[internlm2_chat_7b_qlora_e3_chineseMed.py](configs/internlm2_chat_7b_qlora_e3_chineseMed.py)|
+- 安装：
 
-<details><summary>微调方法如下：</summary>
+```bash
+# 如果你是在 InternStudio 平台，则从本地 clone 一个已有 pytorch 2.0.1 的环境：
+/root/share/install_conda_env_internlm_base.sh xtuner0.1.9
+# 如果你是在其他平台：
+conda create --name xtuner0.1.9 python=3.10 -y
 
-1. 根据基座模型复制上面的配置文件，将模型地址`pretrained_model_name_or_path`和数据集地址`data_path`修改成自己的，propmt模板`prompt_template`需要根据基座模型是InternLM还是InternLM2选择`PROMPT_TEMPLATE.internlm_chat`还是`PROMPT_TEMPLATE.internlm2_chat`，其他参数根据自己的需求修改，然后就可以开始微调（微调时间长的推荐使用tmux，免得万一和机器断开连接导致微调中断）
+# 激活环境
+conda activate xtuner0.1.9
+# 进入家目录 （~的意思是 “当前用户的home路径”）
+cd ~
+# 创建版本文件夹并进入，以跟随本教程
+mkdir xtuner019 && cd xtuner019
 
-   ```bash
-   xtuner train ${YOUR_CONFIG} --deepspeed deepspeed_zero2
-   ```
 
-   `--deepspeed` 表示使用 [DeepSpeed](https://github.com/microsoft/DeepSpeed) 🚀 来优化训练过程。XTuner 内置了多种策略，包括 ZeRO-1、ZeRO-2、ZeRO-3 等。如果用户期望关闭此功能，请直接移除此参数。
+# 拉取 0.1.9 的版本源码
+git clone -b v0.1.9  https://github.com/InternLM/xtuner
+# 无法访问github的用户请从 gitee 拉取:
+# git clone -b v0.1.9 https://gitee.com/Internlm/xtuner
 
-2. 将保存的 `.pth` 模型（如果使用的DeepSpeed，则将会是一个文件夹）转换为 HuggingFace Adapter 模型，即：生成 Adapter 文件夹：
+# 进入源码目录
+cd xtuner
 
-   ```bash
-   export MKL_SERVICE_FORCE_INTEL=1
-   xtuner convert pth_to_hf ${YOUR_CONFIG} ${PTH} ${LoRA_PATH}
-   ```
+# 从源码安装 XTuner
+pip install -e '.[all]'
+```
+- 安装结束后，创建文件夹
 
-3. 将 HuggingFace Adapter 模型合并入 HuggingFace 模型：
+ ```bash
+mkdir RecipeAssistant && cd /root/RecipeAssistant
+ ```
 
-    ```bash
-    xtuner convert merge ${Base_PATH} ${LoRA_PATH} ${MERGED_PATH}
-    ```
+- 准备配置文件
 
-4. 若真的出现意外导致微调中段，可以从最近的 checkpoint 继续微调
+ ```bash
+xtuner copy-cfg internlm_chat_7b_qlora_oasst1_e3 .
+ ```
 
-   ```bash
-   xtuner train ${YOUR_CONFIG} --deepspeed deepspeed_zero2 --resume ${LATEST_CHECKPOINT}
-   ```
+- 下载模型文件
 
-</details>
+ ```bash
+ln -s /share/temp/model_repos/internlm-chat-7b .
+ ```
 
-### Chat
+- 导入训练集
 
-微调结束后可以使用xtuner查看对话效果
+ ```bash
+mkdir data 
+#将本地的.json文件直接拖到该文件夹下即可
+ ```
 
-```shell
-xtuner chat ${MERGED_PATH} [optional arguments]
+- 修改配置文件
+
+ ```bash
+# 复制配置文件到当前目录
+xtuner copy-cfg internlm_chat_7b_qlora_oasst1_e3 .
+# 改个文件名
+mv internlm_chat_7b_qlora_oasst1_e3_copy.py internlm_chat_7b_qlora_medqa2019_e3.py
+
+# 修改配置文件内容
+vim internlm_chat_7b_qlora_medqa2019_e3.py
+ ```
+
+减号代表要删除的行，加号代表要增加的行
+
+ ```bash
+# 修改import部分
+- from xtuner.dataset.map_fns import oasst1_map_fn, template_map_fn_factory
++ from xtuner.dataset.map_fns import template_map_fn_factory
+
+# 修改模型为本地路径
+- pretrained_model_name_or_path = 'internlm/internlm-chat-7b'
++ pretrained_model_name_or_path = './internlm-chat-7b'
+
+# 修改训练数据为 MedQA2019-structured-train.jsonl 路径
+- data_path = 'timdettmers/openassistant-guanaco'
++ data_path = 'MedQA2019-structured-train.jsonl'
+
+# 修改 train_dataset 对象
+train_dataset = dict(
+    type=process_hf_dataset,
+-   dataset=dict(type=load_dataset, path=data_path),
++   dataset=dict(type=load_dataset, path='json', data_files=dict(train=data_path)),
+    tokenizer=tokenizer,
+    max_length=max_length,
+-   dataset_map_fn=alpaca_map_fn,
++   dataset_map_fn=None,
+    template_map_fn=dict(
+        type=template_map_fn_factory, template=prompt_template),
+    remove_unused_columns=True,
+    shuffle_before_pack=True,
+    pack_to_max_length=pack_to_max_length)
+ ```
+
+- 开始调试
+
+ ```bash
+xtuner train internlm_chat_7b_qlora_medqa2019_e3.py --deepspeed deepspeed_zero2
+ ```
+
+- pth转huggingface
+
+ ```bash
+mkdir hf
+export MKL_SERVICE_FORCE_INTEL=1
+export MKL_THREADING_LAYER=GNU
+xtuner convert pth_to_hf ./internlm_chat_7b_qlora_medqa2019_e3.py ./work_dirs/internlm_chat_7b_qlora_medqa2019_e3/epoch_1.pth ./hf
+ ```
+
+- 部署与测试
+
+  将HuggingFace adapter合并到大语言模型
+
+```bash
+xtuner convert merge ./internlm-chat-7b ./hf ./merged --max-shard-size 2GB
+# xtuner convert merge \
+#     ${NAME_OR_PATH_TO_LLM} \
+#     ${NAME_OR_PATH_TO_ADAPTER} \
+#     ${SAVE_PATH} \
+#     --max-shard-size 2GB
 ```
 
-<details><summary>参数：</summary>
-    
-- `--prompt-template`: 指定对话模板，一代模型使用 internlm_chat，二代使用  internlm2_chat。
-- `--system`:  指定SYSTEM文本
-- `--system-template`:  指定SYSTEM模板
-- `--bits`:  LLM位数，{4,8,None}。默认为 fp16。
-- `--bot-name`:  bot名称
-- `--with-plugins`:  指定要使用的插件
-- `--no-streamer`:  是否启用流式传输
-- `--lagent`:  是否使用lagent
-- `--command-stop-word`:  命令停止词
-- `--answer-stop-word`:  回答停止词
-- `--offload-folder`:  存放模型权重的文件夹（或者已经卸载模型权重的文件夹）
-- `--max-new-tokens`:  生成文本中允许的最大 token 数量
-- `--temperature`:  温度值，对于二代模型，建议为0.8。
-- `--top-k`:  保留用于顶k筛选的最高概率词汇标记数
-- `--top-p`:  如果设置为小于1的浮点数，仅保留概率相加高于 top_p 的最小一组最有可能的标记，对于二代模型，建议为0.8。
-- `--repetition-penalty`: 防止文本重复输出，对于二代模型，个人建议1.01，对于一代模型可不填。
-- `--seed`:  用于可重现文本生成的随机种子
-- `-h`:  查看参数。
+  与合并后的模型对话
+
+```bash
+# 4 bit 量化加载
+xtuner chat ./merged --bits 4 --prompt-template internlm_chat
+```
+
+- 部署智能对话Demo
+
+```bash
+conda activate internlm-demo
+cd /root/RecipeAssistant
+#clone代码
+mkdir code &&cd code
+git clone https://gitee.com/internlm/InternLM.git
+#切换 commit 版本，与教程 commit 版本保持一致
+cd InternLM
+git checkout 3028f07cb79e5b1d7342f4ad8d11efad3fd13d17
+```
+
+- Web demo运行
+
+```bash
+cd root/RecipeAssistant/code/InternLM
+streamlit run web_demo.py --server.address 127.0.0.1 --server.port 6006
+```
+
+  需要配置本地端口进行访问
   
-</details>
 
 ## OpenXLab 部署 中医药知识问答助手
 
