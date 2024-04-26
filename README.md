@@ -23,6 +23,8 @@
 
 &emsp;&emsp;菜谱小管家使用的是InternLM 的 7B 模型，模型参数量为 7B,底座模型为 interlm-chat-7b
 
+&emsp;&emsp;本训练后的模型权重文件已上传至modelscope上，链接如下：https://www.modelscope.cn/models/mkmorebi/RecipeAssistant/files
+
 ## 数据集
 
 &emsp;&emsp;菜谱小管家 数据集采用的数据为OpenDataLab上的公开数据集XiaChuFang Recipe Corpus，共计150百万余条，在训练采用了15万条数据。
