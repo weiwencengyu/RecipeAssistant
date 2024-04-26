@@ -27,7 +27,7 @@
 
 ## 数据集
 
-&emsp;&emsp;菜谱小管家 数据集采用的数据为OpenDataLab上的公开数据集XiaChuFang Recipe Corpus，共计150百万余条，在训练采用了15万条数据。
+&emsp;&emsp;菜谱小管家 数据集采用的数据为OpenDataLab上的公开数据集XiaChuFang Recipe Corpus，共计150百万余条，在训练采用了10万条数据。
 
 &emsp;&emsp;数据集地址：https://opendatalab.com/OpenDataLab/XiaChuFang_Recipe_Corpus
 
